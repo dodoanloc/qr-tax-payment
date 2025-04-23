@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GIẢI PHÁP NỘP THUẾ KHÔNG DÙNG TIỀN MẶT</title>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f9f9f9;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    .container {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      padding: 1rem;
+      width: 90%;
+      max-width: 480px;
+      box-sizing: border-box;
+    }
+    h2 {
+      font-size: 1.5rem;
+      text-align: center;
+      margin-bottom: 1rem;
+      color: #800000;
+    }
+    .logo {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    .logo img {
+      max-height: 60px;
+    }
+    .form-group {
+      margin-bottom: 1rem;
+    }
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: bold;
+    }
+    input, select, button {
+      width: 100%;
+      padding: 0.75rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #800000;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    button:hover {
+      background-color: #a00000;
+    }
+    .error {
+      color: #dc3545;
+      margin-top: 0.5rem;
+    }
+    .qr {
+      text-align: center;
+      margin-top: 1.5rem;
+    }
+    #qr-img {
+      max-width: 100%;
+      height: auto;
+      border: 1px solid #eee;
+      padding: 0.5rem;
+      border-radius: 4px;
+      background: #fff;
+    }
+    .footer {
+      text-align: center;
+      font-size: 0.9rem;
+      color: #666;
+      margin-top: 1.5rem;
+      padding-bottom: 1rem;
+    }
+    @media (min-width: 600px) {
+      h2 { font-size: 1.75rem; }
+      input, select, button { font-size: 1.1rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <img src="logo.png" alt="Agribank Logo">
+    </div>
+    <h2>GIẢI PHÁP NỘP THUẾ KHÔNG DÙNG TIỀN MẶT</h2>
+    <div class="form-group">
+      <label for="mst">Mã số thuế (MST)</label>
+      <input type="text" id="mst" placeholder="Ví dụ: 0100102345">
+      <button id="btn-search">Tìm kiếm</button>
+      <p id="error" class="error"></p>
+    </div>
+    <div id="choose-section" class="form-group" style="display:none;">
+      <label for="choose">Chọn khoản cần nộp</label>
+      <select id="choose"></select>
+      <button id="btn-gen">Tạo QR</button>
+    </div>
+    <div class="qr">
+      <img id="qr-img" alt="QR code sẽ hiện ở đây">
+    </div>
+  </div>
+  <div class="footer">
+    Bản quyền thuộc về Agribank CN huyện Thọ Xuân Thanh Hoá
+  </div>
+
+<script>
+  let data = [];
+
+  window.addEventListener('load', () => {
+    fetch('data.xlsx')
+      .then(res => { if (!res.ok) throw new Error('Không tải được file data.xlsx'); return res.arrayBuffer(); })
+      .then(ab => {
+        const wb = XLSX.read(ab, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        data = XLSX.utils.sheet_to_json(ws, { raw: false });
+      })
+      .catch(err => alert('Lỗi khi load dữ liệu: ' + err.message));
+  });
+
+  document.getElementById('mst').addEventListener('input', () => {
+    document.getElementById('error').textContent = '';
+    document.getElementById('choose-section').style.display = 'none';
+    document.getElementById('qr-img').src = '';
+  });
+
+  document.getElementById('mst').addEventListener('keypress', e => { if (e.key === 'Enter') document.getElementById('btn-search').click(); });
+
+  document.getElementById('btn-search').addEventListener('click', () => {
+    const mst = document.getElementById('mst').value.trim();
+    const matches = data.filter(r => String(r.MST) === mst);
+    if (matches.length === 0) {
+      document.getElementById('error').textContent = 'Không tìm thấy MST này!';
+      return;
+    }
+    const choose = document.getElementById('choose');
+    choose.innerHTML = '';
+    matches.forEach((row, idx) => {
+      const opt = document.createElement('option');
+      opt.value = idx;
+      opt.textContent = `Số tiền: ${row.Amount} — Nội dung: ${row.Message}`;
+      choose.appendChild(opt);
+    });
+    document.getElementById('choose-section').style.display = 'block';
+  });
+
+  document.getElementById('btn-gen').addEventListener('click', () => {
+    const mst = document.getElementById('mst').value.trim();
+    const idx = parseInt(document.getElementById('choose').value, 10);
+    const row = data.filter(r => String(r.MST) === mst)[idx];
+    const payload = {
+      accountNo: String(row.Account),
+      accountName: String(row.AccountName),
+      acqId: 970405,
+      amount: Number(row.Amount),
+      addInfo: row.Message,
+      format: 'text',
+      template: 'compact'
+    };
+    fetch('https://api.vietqr.io/v2/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-id': 'YOUR_CLIENT_ID',
+        'x-api-key': 'YOUR_API_KEY'
+      },
+      body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(json => {
+      if (json.code !== '00') throw new Error(json.desc);
+      document.getElementById('qr-img').src = json.data.qrDataURL;
+    })
+    .catch(err => alert('Lỗi tạo QR: ' + err.message));
+  });
+</script>
+</body>
+</html>
